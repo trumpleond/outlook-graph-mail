@@ -86,7 +86,7 @@ jobs:
           cp server/.env.example "${PKG_DIR}/server/" 2>/dev/null || true
 
           cp -r web/dist/. "${PKG_DIR}/public/"
-          cp Dockerfile docker-compose.yml README.md "${PKG_DIR}/"
+          cp Dockerfile docker-compose.yml docker-compose.build.yml README.md .env.example "${PKG_DIR}/"
           cp scripts/start.sh "${PKG_DIR}/start.sh"
           cp scripts/start.bat "${PKG_DIR}/start.bat"
           chmod +x "${PKG_DIR}/start.sh"

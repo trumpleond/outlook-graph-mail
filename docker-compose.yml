@@ -1,22 +1,38 @@
-version: '3.8'
+# Production deploy: pull image from GHCR + Postgres + Redis
+# Usage:
+#   cp .env.example .env   # edit secrets
+#   docker compose up -d
+#
+# Local build from source instead of pulling:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+name: outlook-graph-mail
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/trumpleond/outlook-graph-mail:${IMAGE_TAG:-latest}
+    container_name: ogm-app
     ports:
-      - "8898:8898"
+      - "${APP_PORT:-8898}:8898"
     environment:
-      - NODE_ENV=production
-      - PORT=8898
-      - DATABASE_URL=postgresql://oauth2api:oauth2api_secret@postgres:5432/oauth2api
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=2h
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      NODE_ENV: production
+      PORT: "8898"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oauth2api}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-oauth2api}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      ADMIN_2FA_SECRET: ${ADMIN_2FA_SECRET:-}
+      ADMIN_LOGIN_MAX_ATTEMPTS: ${ADMIN_LOGIN_MAX_ATTEMPTS:-5}
+      ADMIN_LOGIN_LOCK_MINUTES: ${ADMIN_LOGIN_LOCK_MINUTES:-15}
+      API_LOG_RETENTION_DAYS: ${API_LOG_RETENTION_DAYS:-30}
+      API_LOG_CLEANUP_INTERVAL_MINUTES: ${API_LOG_CLEANUP_INTERVAL_MINUTES:-60}
+      TOKEN_REFRESH_ENABLED: ${TOKEN_REFRESH_ENABLED:-true}
+      TOKEN_REFRESH_INTERVAL_HOURS: ${TOKEN_REFRESH_INTERVAL_HOURS:-12}
+      TOKEN_REFRESH_CONCURRENCY: ${TOKEN_REFRESH_CONCURRENCY:-10}
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,7 +44,13 @@ services:
     volumes:
       - app_logs:/app/server/logs
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8898/health"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8898/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -36,8 +58,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    container_name: ogm-redis
     restart: unless-stopped
     networks:
       - app-network
@@ -49,26 +70,29 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    # Redis is internal-only (not published to host)
 
   postgres:
     image: postgres:16-alpine
-    ports:
-      - "15432:5432"
+    container_name: ogm-postgres
     environment:
-      - POSTGRES_USER=oauth2api
-      - POSTGRES_PASSWORD=oauth2api_secret
-      - POSTGRES_DB=oauth2api
+      POSTGRES_USER: ${POSTGRES_USER:-oauth2api}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-oauth2api}
     restart: unless-stopped
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U oauth2api"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Optional host mapping: set POSTGRES_HOST_PORT in .env (e.g. 15432)
+    ports:
+      - "${POSTGRES_HOST_PORT:-127.0.0.1:15432}:5432"
 
 networks:
   app-network:

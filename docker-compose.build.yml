@@ -1,0 +1,9 @@
+# Override: build app image from local source instead of pulling GHCR.
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+services:
+  app:
+    image: outlook-graph-mail:local
+    build:
+      context: .
+      dockerfile: Dockerfile

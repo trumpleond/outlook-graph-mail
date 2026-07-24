@@ -12,38 +12,118 @@
 ## 项目结构
 
 ```
-├── server/                 # 后端服务
+├── server/                      # 后端服务
 │   ├── src/
-│   │   ├── config/        # 环境配置
-│   │   ├── lib/           # 核心库
-│   │   ├── plugins/       # Fastify 插件
-│   │   ├── modules/       # 业务模块
-│   ├── prisma/            # 数据库 Schema
+│   │   ├── config/             # 环境配置
+│   │   ├── lib/                # 核心库
+│   │   ├── plugins/            # Fastify 插件
+│   │   ├── modules/            # 业务模块
+│   ├── prisma/                 # 数据库 Schema
 │   └── package.json
-├── web/                    # 前端管理面板
-├── docker-compose.yml
+├── web/                         # 前端管理面板
+├── scripts/                     # 离线包启动脚本
+├── docker-compose.yml           # 生产部署（拉取 GHCR 镜像）
+├── docker-compose.build.yml     # 本地源码构建覆盖
+├── .env.example                 # Compose / 部署环境变量模板
 └── Dockerfile
 ```
 
 ## 快速开始
 
-### Docker 部署
+### Docker Compose 部署（推荐）
 
-生产环境请先注入密钥（不要写死在仓库）：
+默认从 GitHub Container Registry 拉取已发布镜像，并启动 **app + PostgreSQL + Redis**。应用监听 **8898**。
 
-```bash
-export JWT_SECRET="replace-with-at-least-32-char-random-secret"
-export ENCRYPTION_KEY="replace-with-32-character-secret-key"
-export ADMIN_PASSWORD="replace-with-strong-password"
-```
-
-然后启动：
+#### 1. 准备环境变量
 
 ```bash
-docker-compose up -d --build
+cp .env.example .env
 ```
 
-访问 http://localhost:8898
+编辑 `.env`，至少修改以下项（生产环境禁止使用示例默认值）：
+
+| 变量 | 要求 |
+|------|------|
+| `JWT_SECRET` | ≥ 32 字符随机串 |
+| `ENCRYPTION_KEY` | **恰好 32** 字符 |
+| `ADMIN_PASSWORD` | 强密码（不可为 `admin123`） |
+| `POSTGRES_PASSWORD` | 数据库密码（勿含 `@` `:` 等 URL 特殊字符） |
+
+可选：
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `IMAGE_TAG` | 镜像标签，如 `2.0.0` / `latest` | `latest` |
+| `APP_PORT` | 宿主机映射端口 | `8898` |
+| `ADMIN_USERNAME` | 管理员用户名 | `admin` |
+| `POSTGRES_HOST_PORT` | 宿主机 Postgres 端口 | `127.0.0.1:15432` |
+| `CORS_ORIGIN` | 跨域来源（逗号分隔） | 空 |
+
+#### 2. 启动
+
+若 GHCR 包为私有，需先登录（公开包可跳过）：
+
+```bash
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+```
+
+```bash
+# 拉取镜像并后台启动
+docker compose up -d
+
+# 查看状态 / 日志
+docker compose ps
+docker compose logs -f app
+```
+
+#### 3. 访问与健康检查
+
+- 管理面板 / API：http://localhost:8898  
+- 健康检查：
+
+```bash
+curl http://localhost:8898/health
+# {"success":true,"data":{"status":"ok"}}
+```
+
+#### 4. 常用运维命令
+
+```bash
+# 指定版本部署
+# 在 .env 中设置 IMAGE_TAG=2.0.0 后：
+docker compose pull
+docker compose up -d
+
+# 停止（保留数据卷）
+docker compose down
+
+# 停止并删除数据卷（危险：清空数据库）
+docker compose down -v
+
+# 仅重启应用
+docker compose restart app
+```
+
+#### 5. 从源码本地构建（可选）
+
+不拉 GHCR、用当前仓库 Dockerfile 构建：
+
+```bash
+cp .env.example .env   # 同样需要配置密钥
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+#### 6. 服务说明
+
+| 服务 | 容器名 | 说明 |
+|------|--------|------|
+| `app` | `ogm-app` | 应用（Fastify + 静态前端），端口 `APP_PORT→8898` |
+| `postgres` | `ogm-postgres` | PostgreSQL 16，数据卷 `postgres_data` |
+| `redis` | `ogm-redis` | Redis 7，仅内网，数据卷 `redis_data` |
+
+应用启动时会执行 `prisma db push` 同步表结构。日志目录挂载为卷 `app_logs`。
+
+> **安全提示**：不要把生产 `.env` 提交进 Git。`JWT_SECRET` / `ENCRYPTION_KEY` / `ADMIN_PASSWORD` / `POSTGRES_PASSWORD` 必须通过环境或 `.env` 注入。
 
 ### 打标签发布（Docker 镜像 + 版本包）
 
@@ -66,12 +146,7 @@ docker pull ghcr.io/trumpleond/outlook-graph-mail:2.0.0
 docker pull ghcr.io/trumpleond/outlook-graph-mail:latest
 ```
 
-### 健康检查
-
-```bash
-curl http://localhost:8898/health
-# {"success":true,"data":{"status":"ok"}}
-```
+Compose 中通过 `.env` 的 `IMAGE_TAG` 选用版本，例如 `IMAGE_TAG=2.0.0`。
 
 ## 开发质量检查
 
@@ -209,10 +284,10 @@ API Key 的 `permissions` 使用与上表一致的 action 值（如 `mail_new`�
 
 ## 生产配置要求
 
-- `JWT_SECRET`、`ENCRYPTION_KEY`、`ADMIN_PASSWORD` 必须通过外部环境变量注入。
+- 使用仓库根目录 `.env.example` 复制为 `.env` 后填写；`JWT_SECRET`、`ENCRYPTION_KEY`、`ADMIN_PASSWORD`、`POSTGRES_PASSWORD` 必须注入且不可使用示例默认值。
 - 如启用 2FA，`ADMIN_2FA_SECRET` 也必须通过外部环境变量注入。
-- 不要在 `docker-compose.yml`、`.env`、代码仓库中写死生产密钥。
-- `server/.env.example` 仅作为模板，不能直接用于生产。
+- 不要在 `docker-compose.yml`、`.env`、代码仓库中写死生产密钥；`.env` 已在 `.gitignore` 中忽略。
+- `server/.env.example` 仅作本地开发参考，Compose 部署以根目录 `.env` 为准。
 - 如需跨域访问，配置 `CORS_ORIGIN`（如 `https://admin.example.com,https://ops.example.com`）。
 - 生产模式会在启动时对前端静态资源生成 `.gz/.br` 预压缩文件，并优先下发压缩版本。
 - 服务会按 `API_LOG_RETENTION_DAYS` 与 `API_LOG_CLEANUP_INTERVAL_MINUTES` 自动清理历史 API 日志。
