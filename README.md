@@ -43,12 +43,33 @@ export ADMIN_PASSWORD="replace-with-strong-password"
 docker-compose up -d --build
 ```
 
-访问 http://localhost:3000
+访问 http://localhost:8898
+
+### 打标签发布（Docker 镜像 + 版本包）
+
+推送 `v*` 标签会触发 GitHub Actions，自动：
+
+1. 编译前后端
+2. 打包 `tar.gz` / `zip` 版本包并上传到 GitHub Release
+3. 构建并推送 Docker 镜像到 `ghcr.io/trumpleond/outlook-graph-mail`
+
+```bash
+git tag v2.0.0
+git push origin v2.0.0
+```
+
+拉取镜像：
+
+```bash
+docker pull ghcr.io/trumpleond/outlook-graph-mail:2.0.0
+# 或
+docker pull ghcr.io/trumpleond/outlook-graph-mail:latest
+```
 
 ### 健康检查
 
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:8898/health
 # {"success":true,"data":{"status":"ok"}}
 ```
 
@@ -73,7 +94,7 @@ npm run test
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | NODE_ENV | 环境 | development |
-| PORT | 端口 | 3000 |
+| PORT | 端口 | 8898 |
 | DATABASE_URL | PostgreSQL 连接 | - |
 | REDIS_URL | Redis 连接 | - |
 | CORS_ORIGIN | 允许跨域来源（逗号分隔） | 开发环境默认放开 |

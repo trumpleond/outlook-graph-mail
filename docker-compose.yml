@@ -6,10 +6,10 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "8898:8898"
     environment:
       - NODE_ENV=production
-      - PORT=3000
+      - PORT=8898
       - DATABASE_URL=postgresql://oauth2api:oauth2api_secret@postgres:5432/oauth2api
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
@@ -28,7 +28,7 @@ services:
     volumes:
       - app_logs:/app/server/logs
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8898/health"]
       interval: 30s
       timeout: 10s
       retries: 3

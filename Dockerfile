@@ -41,7 +41,10 @@ COPY --from=builder /app/web/dist ./public
 # Set working directory to server
 WORKDIR /app/server
 
+ENV PORT=8898
+ENV NODE_ENV=production
+
 # Run database migrations and start server
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
 
-EXPOSE 3000
+EXPOSE 8898
